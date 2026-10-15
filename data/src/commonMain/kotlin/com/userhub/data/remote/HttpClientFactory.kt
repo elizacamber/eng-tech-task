@@ -19,6 +19,7 @@ fun createHttpClient(
     engine: HttpClientEngine,
     isDebugBuild: Boolean = isDebug,
 ): HttpClient = HttpClient(engine) {
+    expectSuccess = true
     install(ContentNegotiation) {
         json(
             Json {

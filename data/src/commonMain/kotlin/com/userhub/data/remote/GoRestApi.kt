@@ -12,7 +12,7 @@ class GoRestApi(private val client: HttpClient) {
 
     suspend fun fetchLastPageUsers(): List<UserDto> {
         val firstPage = client.get("${ApiConfig.BASE_URL}/users")
-        val lastPage = firstPage.headers["x-pagination-pages"]!!.toInt()
+        val lastPage = firstPage.headers["x-pagination-pages"]?.toIntOrNull() ?: 1
         return client.get("${ApiConfig.BASE_URL}/users?page=$lastPage").body()
     }
 

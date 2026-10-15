@@ -58,6 +58,7 @@ class FakeUserRepository(
             )
         }
         val client = HttpClient(engine) {
+            expectSuccess = true // mirror prod
             install(ContentNegotiation) { json() }
         }
         return client.get("https://test.local/")

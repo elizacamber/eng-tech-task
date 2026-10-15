@@ -4,9 +4,12 @@ import com.userhub.data.currentTimeMillis
 import com.userhub.data.local.UserLocalDataSource
 import com.userhub.data.remote.CreateUserRequest
 import com.userhub.data.remote.GoRestApi
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.statement.HttpResponse
+import io.ktor.serialization.JsonConvertException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.io.IOException
 
 class UserRepositoryImpl(
     private val api: GoRestApi,
@@ -19,14 +22,23 @@ class UserRepositoryImpl(
             // persist for offline support
             localDataSource.saveUsers(users, currentTimeMillis())
             UsersResult.Success(users, lastSyncMillis = null)
-        } catch (e: Exception) {
-            val cached = localDataSource.getUsers()
-            if (cached.isEmpty()) {
-                UsersResult.NoInternet
-            } else {
-                val lastSync = cached.maxOfOrNull { it.cachedAt }
-                UsersResult.Success(cached.map { it.user }, lastSyncMillis = lastSync)
-            }
+        } catch (e: IOException) {
+            fallbackToCache()
+        } catch (e: ResponseException) {
+            fallbackToCache()
+        } catch (e: JsonConvertException) {
+            fallbackToCache()
+        }
+    }
+
+    private fun fallbackToCache(): UsersResult {
+        val cached = localDataSource.getUsers()
+        return if (cached.isEmpty()) {
+            UsersResult.NoInternet
+        } else {
+            UsersResult.Success(
+                cached.map { it.user },
+                lastSyncMillis = cached.maxOf { it.cachedAt })
         }
     }
 

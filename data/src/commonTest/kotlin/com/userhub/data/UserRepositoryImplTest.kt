@@ -19,6 +19,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
+import kotlin.test.assertFailsWith
 
 class UserRepositoryImplTest {
 
@@ -98,5 +100,13 @@ class UserRepositoryImplTest {
         val result = repository.getUsers()
 
         assertIs<UsersResult.NoInternet>(result)
+    }
+
+    @Test
+    fun `propagates cancellation thrown by the network call`() = runTest {
+        val engine = MockEngine { throw CancellationException("cancelled") }
+        val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
+
+        assertFailsWith<CancellationException> { repository.getUsers() }
     }
 }
