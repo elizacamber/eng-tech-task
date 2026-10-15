@@ -10,4 +10,7 @@ data class CachedUser(
 interface UserLocalDataSource {
     fun saveUsers(users: List<UserDto>, timestamp: Long)
     fun getUsers(): List<CachedUser>
+    fun markCreated(id: Long, createdAt: Long)
+    fun forgetCreated(id: Long)
+    fun createdTimes(): Map<Long, Long>
 }

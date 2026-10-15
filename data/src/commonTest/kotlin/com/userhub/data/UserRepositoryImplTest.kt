@@ -14,13 +14,15 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CancellationException
-import kotlin.test.assertFailsWith
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 class UserRepositoryImplTest {
 
@@ -108,5 +110,45 @@ class UserRepositoryImplTest {
         val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
 
         assertFailsWith<CancellationException> { repository.getUsers() }
+    }
+
+    private fun fixedClock(millis: Long) = object : Clock {
+        override fun now() = Instant.fromEpochMilliseconds(millis)
+    }
+
+    @Test
+    fun `caches users with the clock's epoch time`() = runTest {
+        val local = FakeLocalDataSource()
+        val repository = UserRepositoryImpl(
+            GoRestApi(createHttpClient(successEngine())), local, fixedClock(1_700_000_000_000L)
+        )
+
+        repository.getUsers()
+
+        assertEquals(1_700_000_000_000L, local.getUsers().first().cachedAt)
+    }
+
+    @Test
+    fun `remembers when a user was created in the app`() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"id":42,"name":"New","email":"new@example.com","gender":"male","status":"active"}""",
+                status = HttpStatusCode.Created,
+                headers = headersOf(
+                    HttpHeaders.ContentType,
+                    ContentType.Application.Json.toString()
+                )
+            )
+        }
+        val local = FakeLocalDataSource()
+        val repository = UserRepositoryImpl(
+            GoRestApi(createHttpClient(engine)),
+            local,
+            fixedClock(1_700_000_000_000L)
+        )
+
+        repository.createUser("New", "new@example.com")
+
+        assertEquals(mapOf(42L to 1_700_000_000_000L), local.createdTimes())
     }
 }

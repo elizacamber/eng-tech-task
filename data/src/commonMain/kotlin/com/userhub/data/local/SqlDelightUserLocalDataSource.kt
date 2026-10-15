@@ -6,6 +6,7 @@ import com.userhub.data.remote.UserDto
 class SqlDelightUserLocalDataSource(database: UserDatabase) : UserLocalDataSource {
 
     private val queries = database.userCacheQueries
+    private val createdQueries = database.createdUserQueries
 
     override fun saveUsers(users: List<UserDto>, timestamp: Long) {
         queries.transaction {
@@ -36,4 +37,15 @@ class SqlDelightUserLocalDataSource(database: UserDatabase) : UserLocalDataSourc
                 cachedAt = row.cached_at
             )
         }
+
+    override fun markCreated(id: Long, createdAt: Long) {
+        createdQueries.insertCreated(id, createdAt)
+    }
+
+    override fun forgetCreated(id: Long) {
+        createdQueries.deleteCreated(id)
+    }
+
+    override fun createdTimes(): Map<Long, Long> =
+        createdQueries.selectAllCreated().executeAsList().associate { it.id to it.created_at }
 }

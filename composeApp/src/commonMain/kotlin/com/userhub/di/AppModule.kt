@@ -17,17 +17,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
+import kotlin.time.Clock
 
 val appModule = module {
+    single<Clock> { Clock.System }
     single { createHttpClient(get()) }
     single { GoRestApi(get()) }
     single { UserDatabase(get()) }
     single<UserLocalDataSource> { SqlDelightUserLocalDataSource(get()) }
-    single<UserRepository> { UserRepositoryImpl(get(), get()) }
+    single<UserRepository> { UserRepositoryImpl(get(), get(), get()) }
     factory { GetUsersUseCase(get()) }
     factory { AddUserUseCase(get()) }
     factory { DeleteUserUseCase(get()) }
     single { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
-    viewModel { UserFeedViewModel(get(), get(), get()) }
+    viewModel { UserFeedViewModel(get(), get(), get(), get()) }
     viewModel { AddUserViewModel(get()) }
 }

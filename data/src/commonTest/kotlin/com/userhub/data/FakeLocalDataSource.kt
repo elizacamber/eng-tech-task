@@ -17,4 +17,16 @@ class FakeLocalDataSource(initial: List<CachedUser> = emptyList()) : UserLocalDa
     }
 
     override fun getUsers(): List<CachedUser> = stored
+
+    private val created = mutableMapOf<Long, Long>()
+
+    override fun markCreated(id: Long, createdAt: Long) {
+        created[id] = createdAt
+    }
+
+    override fun forgetCreated(id: Long) {
+        created.remove(id)
+    }
+
+    override fun createdTimes(): Map<Long, Long> = created.toMap()
 }

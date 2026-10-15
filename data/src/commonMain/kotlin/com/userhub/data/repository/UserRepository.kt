@@ -4,7 +4,12 @@ import com.userhub.data.remote.UserDto
 import io.ktor.client.statement.HttpResponse
 
 sealed interface UsersResult {
-    data class Success(val users: List<UserDto>, val lastSyncMillis: Long?) : UsersResult
+    data class Success(
+        val users: List<UserDto>,
+        val lastSyncMillis: Long?,
+        // only users created in this app have a real creation time
+        val createdAtMillis: Map<Long, Long> = emptyMap(),
+    ) : UsersResult
     data object NoInternet : UsersResult
 }
 

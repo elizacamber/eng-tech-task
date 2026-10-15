@@ -72,10 +72,12 @@ fun DirectoryRow(
             )
         }
 
-        Text(
-            text = user.createdLabel,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        user.createdLabel?.let { label ->
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

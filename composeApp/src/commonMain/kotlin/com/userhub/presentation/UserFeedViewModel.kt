@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.userhub.data.remote.UserDto
 import com.userhub.data.repository.UsersResult
-import com.userhub.domain.time.TimeProvider
 import com.userhub.domain.time.formatRelativeTime
 import com.userhub.domain.usecase.DeleteUserUseCase
 import com.userhub.domain.usecase.GetUsersUseCase
@@ -20,11 +19,13 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.io.IOException
+import kotlin.time.Clock
 
 class UserFeedViewModel(
     private val getUsers: GetUsersUseCase,
     private val deleteUser: DeleteUserUseCase,
     private val appScope: CoroutineScope,
+    private val clock: Clock = Clock.System,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UserFeedUiState>(UserFeedUiState.Loading)
@@ -48,15 +49,19 @@ class UserFeedViewModel(
         viewModelScope.launch {
             when (val result = getUsers()) {
                 is UsersResult.Success -> {
+                    val now = clock.now()
                     val lastSyncLabel = result.lastSyncMillis?.let {
                         "Offline — last updated ${
                             formatRelativeTime(
                                 it,
-                                TimeProvider.nowEpochMillis()
+                                now.toEpochMilliseconds()
                             )
                         }"
                     }
-                    _state.value = UserFeedUiState.Content(result.users.toUiModels(), lastSyncLabel)
+                    _state.value = UserFeedUiState.Content(
+                        result.users.toUiModels(result.createdAtMillis, now),
+                        lastSyncLabel
+                    )
                 }
 
                 UsersResult.NoInternet -> _state.value = UserFeedUiState.NoInternet
@@ -66,7 +71,7 @@ class UserFeedViewModel(
 
     fun onUserCreated(user: UserDto) {
         val content = _state.value as? UserFeedUiState.Content ?: return
-        _state.value = content.copy(users = listOf(user.toNewUiModel()) + content.users)
+        _state.value = content.copy(users = listOf(user.toNewUiModel(clock.now())) + content.users)
     }
 
     fun onDeleteConfirmed(user: UserUiModel) {

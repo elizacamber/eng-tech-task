@@ -4,7 +4,8 @@ import com.userhub.data.remote.UserDto
 
 data class UserUiModel(
     val user: UserDto,
-    val createdLabel: String
+    // null for users fetched from GoRest, which has no creation date
+    val createdLabel: String?
 ) {
     val id: Long get() = user.id
     val name: String get() = user.name

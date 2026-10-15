@@ -1,15 +1,15 @@
 package com.userhub.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,10 +48,10 @@ private fun PlaceholderMessage() {
 
 @Composable
 private fun UserProfile(user: UserUiModel) {
-    val attributes = listOf(
+    val attributes = listOfNotNull(
         "Gender" to user.user.gender,
         "Status" to user.user.status,
-        "Added" to user.createdLabel
+        user.createdLabel?.let { "Added" to it }
     )
     Column(
         modifier = Modifier
