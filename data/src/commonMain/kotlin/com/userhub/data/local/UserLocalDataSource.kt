@@ -13,4 +13,6 @@ interface UserLocalDataSource {
     fun markCreated(id: Long, createdAt: Long)
     fun forgetCreated(id: Long)
     fun createdTimes(): Map<Long, Long>
+    fun addUser(user: UserDto, timestamp: Long)
+    fun removeUser(id: Long)
 }

@@ -29,4 +29,13 @@ class FakeLocalDataSource(initial: List<CachedUser> = emptyList()) : UserLocalDa
     }
 
     override fun createdTimes(): Map<Long, Long> = created.toMap()
+
+    override fun addUser(user: UserDto, timestamp: Long) {
+        stored.removeAll { it.user.id == user.id }
+        stored.add(0, CachedUser(user, timestamp))
+    }
+
+    override fun removeUser(id: Long) {
+        stored.removeAll { it.user.id == id }
+    }
 }

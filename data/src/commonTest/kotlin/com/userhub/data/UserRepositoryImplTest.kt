@@ -10,6 +10,7 @@ import com.userhub.data.repository.UsersResult
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
+import io.ktor.client.plugins.ResponseException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -44,6 +45,22 @@ class UserRepositoryImplTest {
         )
     }
 
+    private fun createdEngine() = MockEngine {
+        respond(
+            content = """{"id":42,"name":"New","email":"new@example.com","gender":"male","status":"active"}""",
+            status = HttpStatusCode.Created,
+            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+        )
+    }
+
+    private val cachedAda = CachedUser(
+        UserDto(7, "Ada", "ada@example.com", "female", "active"), 1_700_000_000_000L
+    )
+
+    private fun fixedClock(millis: Long) = object : Clock {
+        override fun now() = Instant.fromEpochMilliseconds(millis)
+    }
+
     @Test
     fun `returns users from the last page`() = runTest {
         val repository = UserRepositoryImpl(
@@ -71,7 +88,10 @@ class UserRepositoryImplTest {
     @Test
     fun `falls back to cached users when the network fails`() = runTest {
         val cached = listOf(
-            CachedUser(UserDto(7, "Cached User", "cached@example.com", "male", "active"), 1_700_000_000_000L)
+            CachedUser(
+                UserDto(7, "Cached User", "cached@example.com", "male", "active"),
+                1_700_000_000_000L
+            )
         )
         val engine = MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }
         val repository = UserRepositoryImpl(
@@ -92,7 +112,7 @@ class UserRepositoryImplTest {
     }
 
     @Test
-    fun `returns NoInternet when network fails and cache is empty`() = runTest{
+    fun `returns NoInternet when network fails and cache is empty`() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }
         val repository = UserRepositoryImpl(
             GoRestApi(createHttpClient(engine)),
@@ -107,13 +127,10 @@ class UserRepositoryImplTest {
     @Test
     fun `propagates cancellation thrown by the network call`() = runTest {
         val engine = MockEngine { throw CancellationException("cancelled") }
-        val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
+        val repository =
+            UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
 
         assertFailsWith<CancellationException> { repository.getUsers() }
-    }
-
-    private fun fixedClock(millis: Long) = object : Clock {
-        override fun now() = Instant.fromEpochMilliseconds(millis)
     }
 
     @Test
@@ -130,19 +147,9 @@ class UserRepositoryImplTest {
 
     @Test
     fun `remembers when a user was created in the app`() = runTest {
-        val engine = MockEngine {
-            respond(
-                content = """{"id":42,"name":"New","email":"new@example.com","gender":"male","status":"active"}""",
-                status = HttpStatusCode.Created,
-                headers = headersOf(
-                    HttpHeaders.ContentType,
-                    ContentType.Application.Json.toString()
-                )
-            )
-        }
         val local = FakeLocalDataSource()
         val repository = UserRepositoryImpl(
-            GoRestApi(createHttpClient(engine)),
+            GoRestApi(createHttpClient(createdEngine())),
             local,
             fixedClock(1_700_000_000_000L)
         )
@@ -150,5 +157,47 @@ class UserRepositoryImplTest {
         repository.createUser("New", "new@example.com")
 
         assertEquals(mapOf(42L to 1_700_000_000_000L), local.createdTimes())
+    }
+
+    @Test
+    fun `created user is added to the offline cache`() = runTest {
+        val local = FakeLocalDataSource()
+        val repository =
+            UserRepositoryImpl(GoRestApi(createHttpClient(createdEngine())), local, fixedClock(1L))
+
+        repository.createUser("New", "new@example.com")
+
+        assertEquals(listOf(42L), local.getUsers().map { it.user.id })
+    }
+
+    @Test
+    fun `deleted user is removed from the offline cache`() = runTest {
+        val local = FakeLocalDataSource(listOf(cachedAda))
+        val engine = MockEngine { respond("", HttpStatusCode.NoContent) }
+        val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), local)
+
+        repository.deleteUser(7)
+
+        assertTrue(local.getUsers().isEmpty())
+    }
+
+    @Test
+    fun `user already deleted on the server is removed from the cache`() = runTest {
+        val local = FakeLocalDataSource(listOf(cachedAda))
+        val engine = MockEngine { respondError(HttpStatusCode.NotFound) }
+        val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), local)
+
+        assertFailsWith<ResponseException> { repository.deleteUser(7) }
+        assertTrue(local.getUsers().isEmpty())
+    }
+
+    @Test
+    fun `failed delete keeps the cached user`() = runTest {
+        val local = FakeLocalDataSource(listOf(cachedAda))
+        val engine = MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }
+        val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), local)
+
+        assertFailsWith<ResponseException> { repository.deleteUser(7) }
+        assertEquals(listOf(7L), local.getUsers().map { it.user.id })
     }
 }

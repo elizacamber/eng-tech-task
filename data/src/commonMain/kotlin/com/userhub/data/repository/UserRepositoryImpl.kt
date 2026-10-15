@@ -7,6 +7,7 @@ import com.userhub.data.remote.UserDto
 import io.ktor.client.call.body
 import io.ktor.client.plugins.ResponseException
 import io.ktor.client.statement.HttpResponse
+import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.JsonConvertException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,15 +54,28 @@ class UserRepositoryImpl(
                 CreateUserRequest(name = name, email = email, gender = "male", status = "active")
             )
             // Ktor keeps the body in memory, so the ViewModel can still read it after this
-            localDataSource.markCreated(
-                response.body<UserDto>().id,
-                clock.now().toEpochMilliseconds()
-            )
+            val created = response.body<UserDto>()
+            val now = clock.now().toEpochMilliseconds()
+            // cache it too, so an offline relaunch still shows the new user
+            localDataSource.addUser(created, now)
+            localDataSource.markCreated(created.id, now)
             response
         }
 
     override suspend fun deleteUser(id: Long): HttpResponse =
         withContext(Dispatchers.Default) {
-            api.deleteUser(id).also { localDataSource.forgetCreated(id) }
+            try {
+                api.deleteUser(id).also { forgetLocally(id) }
+            } catch (e: ResponseException) {
+                // 404: already gone on the server, so drop our copy too.
+                // Rethrow so the ViewModel still decides how to treat it.
+                if (e.response.status == HttpStatusCode.NotFound) forgetLocally(id)
+                throw e
+            }
         }
+
+    private fun forgetLocally(id: Long) {
+        localDataSource.removeUser(id)
+        localDataSource.forgetCreated(id)
+    }
 }

@@ -14,5 +14,10 @@ VALUES (?, ?, ?, ?, ?, ?);
 clearAll:
 DELETE FROM user_cache;
 
+-- Users added in the app have a newer cached_at, so they come first, matching the online feed.
 selectAll:
-SELECT * FROM user_cache;
+SELECT * FROM user_cache ORDER BY cached_at DESC, id ASC;
+
+
+deleteUser:
+DELETE FROM user_cache WHERE id = ?;

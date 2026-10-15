@@ -48,4 +48,19 @@ class SqlDelightUserLocalDataSource(database: UserDatabase) : UserLocalDataSourc
 
     override fun createdTimes(): Map<Long, Long> =
         createdQueries.selectAllCreated().executeAsList().associate { it.id to it.created_at }
+
+    override fun addUser(user: UserDto, timestamp: Long) {
+        queries.insertUser(
+            id = user.id,
+            name = user.name,
+            email = user.email,
+            gender = user.gender,
+            status = user.status,
+            cached_at = timestamp
+        )
+    }
+
+    override fun removeUser(id: Long) {
+        queries.deleteUser(id)
+    }
 }
