@@ -21,10 +21,10 @@ class UserRepositoryImpl(
             UsersResult.Success(users, lastSyncMillis = null)
         } catch (e: Exception) {
             val cached = localDataSource.getUsers()
-            val lastSync = cached.maxOf { it.cachedAt }
             if (cached.isEmpty()) {
                 UsersResult.NoInternet
             } else {
+                val lastSync = cached.maxOfOrNull { it.cachedAt }
                 UsersResult.Success(cached.map { it.user }, lastSyncMillis = lastSync)
             }
         }
