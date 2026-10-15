@@ -1,0 +1,5 @@
+-- v1 -> v2: track creation time for users added in the app
+CREATE TABLE created_user (
+    id INTEGER NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL
+);

@@ -1,0 +1,15 @@
+-- Users created in this app. GoRest has no creation date, so this is the only real one we have.
+-- Separate from user_cache so clearAll() on refresh doesn't wipe it.
+CREATE TABLE created_user (
+    id INTEGER NOT NULL PRIMARY KEY,
+    created_at INTEGER NOT NULL
+);
+
+insertCreated:
+INSERT OR REPLACE INTO created_user(id, created_at) VALUES (?, ?);
+
+selectAllCreated:
+SELECT * FROM created_user;
+
+deleteCreated:
+DELETE FROM created_user WHERE id = ?;
