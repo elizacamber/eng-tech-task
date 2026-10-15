@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.io.IOException
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 class UserFeedViewModel(
     private val getUsers: GetUsersUseCase,
@@ -53,8 +54,8 @@ class UserFeedViewModel(
                     val lastSyncLabel = result.lastSyncMillis?.let {
                         "Offline — last updated ${
                             formatRelativeTime(
-                                it,
-                                now.toEpochMilliseconds()
+                                Instant.fromEpochMilliseconds(it),
+                                now
                             )
                         }"
                     }
