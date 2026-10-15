@@ -16,6 +16,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class UserFeedViewModelTest {
@@ -133,5 +134,37 @@ class UserFeedViewModelTest {
         assertEquals(listOf(first.id), repository.deletedIds)
         val state = viewModel.state.value as UserFeedUiState.Content
         assertTrue(state.users.any { it.id == second.id })
+    }
+
+    @Test
+    fun `selecting a user stores its id`() = runTest {
+        val viewModel = viewModel(FakeUserRepository(users))
+        val target = (viewModel.state.value as UserFeedUiState.Content).users[1]
+
+        viewModel.onUserSelected(target)
+
+        assertEquals(target.id, viewModel.selectedUserId.value)
+    }
+
+    @Test
+    fun `deleting the selected user clears the selection`() = runTest {
+        val viewModel = viewModel(FakeUserRepository(users))
+        val target = (viewModel.state.value as UserFeedUiState.Content).users.first()
+        viewModel.onUserSelected(target)
+
+        viewModel.onDeleteConfirmed(target)
+
+        assertNull(viewModel.selectedUserId.value)
+    }
+
+    @Test
+    fun `deleting another user keeps the selection`() = runTest {
+        val viewModel = viewModel(FakeUserRepository(users))
+        val (selected, other) = (viewModel.state.value as UserFeedUiState.Content).users
+        viewModel.onUserSelected(selected)
+
+        viewModel.onDeleteConfirmed(other)
+
+        assertEquals(selected.id, viewModel.selectedUserId.value)
     }
 }

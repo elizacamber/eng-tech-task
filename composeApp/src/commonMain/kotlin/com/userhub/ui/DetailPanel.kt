@@ -10,6 +10,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -23,14 +27,27 @@ import com.userhub.presentation.UserUiModel
 private val ATTRIBUTE_GAP = 16.dp
 
 @Composable
-fun DetailPanel(user: UserUiModel?, modifier: Modifier = Modifier) {
+fun DetailPanel(
+    user: UserUiModel?,
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+) {
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
-        when (user) {
-            null -> PlaceholderMessage()
-            else -> UserProfile(user)
+        // Column, not Surface's default stacking: the arrow sits above the content
+        // instead of stretching under it and being covered by the scrollable profile.
+        Column {
+            if (onBack != null) {
+                IconButton(onClick = onBack, modifier = Modifier.padding(4.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+            }
+            when (user) {
+                null -> PlaceholderMessage()
+                else -> UserProfile(user)
+            }
         }
     }
 }

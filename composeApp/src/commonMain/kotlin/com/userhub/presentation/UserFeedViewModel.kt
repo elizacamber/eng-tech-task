@@ -39,6 +39,10 @@ class UserFeedViewModel(
     // One at a time: starting a new delete sends the previous one right away.
     private var pendingDelete: PendingDelete? = null
 
+    // Selected user's id: survives reloads and label changes. A deleted user can't be shown because it's no longer in the list.
+    private val _selectedUserId = MutableStateFlow<Long?>(null)
+    val selectedUserId: StateFlow<Long?> = _selectedUserId.asStateFlow()
+
     private data class PendingDelete(val index: Int, val user: UserUiModel)
 
     init {
@@ -83,6 +87,8 @@ class UserFeedViewModel(
         pendingDelete?.let(::commit)
         pendingDelete = PendingDelete(index, user)
         _state.value = content.copy(users = content.users - user)
+        // don't keep showing a user that was just deleted
+        if (_selectedUserId.value == user.id) _selectedUserId.value = null
     }
 
     // Undo tapped: nothing was sent, so just put the row back.
@@ -101,6 +107,14 @@ class UserFeedViewModel(
         // the screen is gone. Nobody can tap Undo anymore
         pendingDelete?.let(::commit)
         pendingDelete = null
+    }
+
+    fun onUserSelected(user: UserUiModel) {
+        _selectedUserId.value = user.id
+    }
+
+    fun onSelectionCleared() {
+        _selectedUserId.value = null
     }
 
     // a late callback from an older snackbar must not touch a newer delete

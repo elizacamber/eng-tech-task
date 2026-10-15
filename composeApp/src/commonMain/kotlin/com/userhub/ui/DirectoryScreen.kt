@@ -48,7 +48,7 @@ fun DirectoryScreen(
 
     var showAddSheet by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<UserUiModel?>(null) }
-    var selectedUser by remember { mutableStateOf<UserUiModel?>(null) }
+    val selectedUserId by feedViewModel.selectedUserId.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -57,25 +57,36 @@ fun DirectoryScreen(
         feedViewModel.errors.collect { snackbarHostState.showSnackbar(it) }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { showAddSheet = true }) {
-                Icon(Icons.Default.Add, contentDescription = null)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val isWide = maxWidth >= 700.dp
+        val users = (state as? UserFeedUiState.Content)?.users.orEmpty()
+        val selectedUser = users.firstOrNull { it.id == selectedUserId }
+        // Phone with a user selected: the details replace the list
+        val showDetailOnly = !isWide && selectedUser != null
+
+        PlatformBackHandler(enabled = showDetailOnly, onBack = feedViewModel::onSelectionCleared)
+
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = {
+                // only show FAB when we're not on the detail screen
+                if (!showDetailOnly) {
+                    FloatingActionButton(onClick = { showAddSheet = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add user")
+                    }
+                }
             }
-        }
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (val current = state) {
-                UserFeedUiState.Loading -> LoadingSkeleton()
-                UserFeedUiState.NoInternet -> ConnectionErrorState(onRetry = feedViewModel::load)
-                is UserFeedUiState.Content -> BoxWithConstraints {
-                    if (maxWidth >= 700.dp) {
-                        Row {
+        ) { padding ->
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                when (val current = state) {
+                    UserFeedUiState.Loading -> LoadingSkeleton()
+                    UserFeedUiState.NoInternet -> ConnectionErrorState(onRetry = feedViewModel::load)
+                    is UserFeedUiState.Content -> when {
+                        isWide -> Row {
                             UserList(
                                 users = current.users,
                                 lastSyncLabel = current.lastSyncLabel,
-                                onClick = { selectedUser = it },
+                                onClick = feedViewModel::onUserSelected,
                                 onLongPress = { pendingDelete = it },
                                 modifier = Modifier.weight(2f)
                             )
@@ -84,70 +95,75 @@ fun DirectoryScreen(
                                 modifier = Modifier.weight(3f)
                             )
                         }
-                    } else {
-                        UserList(
+
+                        selectedUser != null -> DetailPanel(
+                            user = selectedUser,
+                            onBack = feedViewModel::onSelectionCleared
+                        )
+
+                        else -> UserList(
                             users = current.users,
                             lastSyncLabel = current.lastSyncLabel,
-                            onClick = { selectedUser = it },
+                            onClick = feedViewModel::onUserSelected,
                             onLongPress = { pendingDelete = it },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
             }
-        }
-    }
 
-    if (showAddSheet) {
-        NewUserSheet(
-            state = addState,
-            onDismiss = {
-                showAddSheet = false
-                addUserViewModel.clearError()
-            },
-            onSubmit = { name, email ->
-                addUserViewModel.submit(name, email) { created ->
-                    feedViewModel.onUserCreated(created)
-                    showAddSheet = false
-                    scope.launch { snackbarHostState.showSnackbar("User added") }
-                }
-            }
-        )
-    }
-
-    pendingDelete?.let { user ->
-        AlertDialog(
-            onDismissRequest = { pendingDelete = null },
-            title = { Text("Delete user?") },
-            text = { Text("${user.name} will be removed from the directory.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDelete = null
-                        // only one undo at a time: close the previous snackbar
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        feedViewModel.onDeleteConfirmed(user)
-                        scope.launch {
-                            var undone = false
-                            try {
-                                // finally runs on Undo, timeout, dismiss, or the screen leaving
-                                undone = snackbarHostState.showSnackbar(
-                                    message = "${user.name} deleted",
-                                    actionLabel = "Undo",
-                                    duration = SnackbarDuration.Long
-                                ) == SnackbarResult.ActionPerformed
-                            } finally {
-                                if (undone) feedViewModel.onUndo(user)
-                                else feedViewModel.onUndoWindowClosed(user)
-                            }
+            if (showAddSheet) {
+                NewUserSheet(
+                    state = addState,
+                    onDismiss = {
+                        showAddSheet = false
+                        addUserViewModel.clearError()
+                    },
+                    onSubmit = { name, email ->
+                        addUserViewModel.submit(name, email) { created ->
+                            feedViewModel.onUserCreated(created)
+                            showAddSheet = false
+                            scope.launch { snackbarHostState.showSnackbar("User added") }
                         }
                     }
-                ) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                )
             }
-        )
+
+            pendingDelete?.let { user ->
+                AlertDialog(
+                    onDismissRequest = { pendingDelete = null },
+                    title = { Text("Delete user?") },
+                    text = { Text("${user.name} will be removed from the directory.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                pendingDelete = null
+                                // only one undo at a time: close the previous snackbar
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                feedViewModel.onDeleteConfirmed(user)
+                                scope.launch {
+                                    var undone = false
+                                    try {
+                                        // finally runs on Undo, timeout, dismiss, or the screen leaving
+                                        undone = snackbarHostState.showSnackbar(
+                                            message = "${user.name} deleted",
+                                            actionLabel = "Undo",
+                                            duration = SnackbarDuration.Long
+                                        ) == SnackbarResult.ActionPerformed
+                                    } finally {
+                                        if (undone) feedViewModel.onUndo(user)
+                                        else feedViewModel.onUndoWindowClosed(user)
+                                    }
+                                }
+                            }
+                        ) { Text("Delete") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                    }
+                )
+            }
+        }
     }
 }
 
