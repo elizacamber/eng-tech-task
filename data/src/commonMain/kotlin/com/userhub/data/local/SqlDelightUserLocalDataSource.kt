@@ -1,14 +1,14 @@
 package com.userhub.data.local
 
 import com.userhub.data.db.UserDatabase
-import com.userhub.data.remote.UserDto
+import com.userhub.domain.model.User
 
 class SqlDelightUserLocalDataSource(database: UserDatabase) : UserLocalDataSource {
 
     private val queries = database.userCacheQueries
     private val createdQueries = database.createdUserQueries
 
-    override fun saveUsers(users: List<UserDto>, timestamp: Long) {
+    override fun saveUsers(users: List<User>, timestamp: Long) {
         queries.transaction {
             queries.clearAll()
             users.forEach { user ->
@@ -27,7 +27,7 @@ class SqlDelightUserLocalDataSource(database: UserDatabase) : UserLocalDataSourc
     override fun getUsers(): List<CachedUser> =
         queries.selectAll().executeAsList().map { row ->
             CachedUser(
-                user = UserDto(
+                user = User(
                     id = row.id,
                     name = row.name,
                     email = row.email,
@@ -49,7 +49,7 @@ class SqlDelightUserLocalDataSource(database: UserDatabase) : UserLocalDataSourc
     override fun createdTimes(): Map<Long, Long> =
         createdQueries.selectAllCreated().executeAsList().associate { it.id to it.created_at }
 
-    override fun addUser(user: UserDto, timestamp: Long) {
+    override fun addUser(user: User, timestamp: Long) {
         queries.insertUser(
             id = user.id,
             name = user.name,

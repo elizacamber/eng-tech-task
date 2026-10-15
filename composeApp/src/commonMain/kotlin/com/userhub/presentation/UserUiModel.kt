@@ -1,10 +1,10 @@
 package com.userhub.presentation
 
-import com.userhub.data.remote.UserDto
+import com.userhub.domain.model.User
 import kotlin.time.Instant
 
 data class UserUiModel(
-    val user: UserDto,
+    val user: User,
     // null for users fetched from GoRest, which has no creation date
     val createdAt: Instant?,
 ) {

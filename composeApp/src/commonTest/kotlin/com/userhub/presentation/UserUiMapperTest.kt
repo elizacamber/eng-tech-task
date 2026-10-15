@@ -1,6 +1,6 @@
 package com.userhub.presentation
 
-import com.userhub.data.remote.UserDto
+import com.userhub.domain.model.User
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.asTimeZone
@@ -12,7 +12,7 @@ import kotlin.time.Instant
 
 class UserUiMapperTest {
     private val utc = TimeZone.UTC
-    private val user = UserDto(1, "Ada Lovelace", "ada@example.com", "female", "active")
+    private val user = User(1, "Ada Lovelace", "ada@example.com", "female", "active")
 
     private fun at(iso: String) = Instant.parse(iso)
 

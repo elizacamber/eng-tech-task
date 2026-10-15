@@ -20,7 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.userhub.presentation.AddUserError
+import com.userhub.domain.model.DataError
 import com.userhub.presentation.AddUserState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,7 +39,7 @@ fun NewUserSheet(
     val emailValid = email.contains("@") && email.substringAfter("@").contains(".")
 
     // 422 errors from the server, shown under the field they belong to
-    val fieldErrors = (state.error as? AddUserError.InvalidFields)?.messages.orEmpty()
+    val fieldErrors = (state.error as? DataError.InvalidFields)?.messages.orEmpty()
     val nameError = when {
         name.isNotEmpty() && !nameValid -> "Name must be at least 2 characters"
         else -> fieldErrors["name"]?.let { "Name $it" }
@@ -102,10 +102,10 @@ fun NewUserSheet(
 }
 
 // Errors that don't belong to a single field. Field errors are shown on the fields.
-private fun generalMessage(error: AddUserError): String? = when (error) {
-    AddUserError.Offline -> "No internet connection. Please check your network and try again."
-    AddUserError.Unauthorized -> "The app isn't authorised to add users. The API token may be invalid."
-    is AddUserError.InvalidFields -> null
-    is AddUserError.Server -> "Couldn't create user (${error.status}). Please try again."
-    AddUserError.UnreadableResponse -> "User was created, but the response couldn't be read. Pull to refresh."
+private fun generalMessage(error: DataError): String? = when (error) {
+    DataError.Offline -> "No internet connection. Please check your network and try again."
+    DataError.Unauthorized -> "The app isn't authorised to add users. The API token may be invalid."
+    is DataError.InvalidFields -> null
+    is DataError.Server -> "Couldn't create user (${error.status}). Please try again."
+    DataError.UnreadableResponse -> "User was created, but the response couldn't be read. Pull to refresh."
 }

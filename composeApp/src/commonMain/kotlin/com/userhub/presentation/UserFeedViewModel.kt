@@ -2,13 +2,13 @@ package com.userhub.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.userhub.data.remote.UserDto
-import com.userhub.data.repository.UsersResult
+import com.userhub.domain.model.DataError
+import com.userhub.domain.model.DataResult
+import com.userhub.domain.model.User
+import com.userhub.domain.repository.UsersResult
 import com.userhub.domain.time.formatRelativeTime
 import com.userhub.domain.usecase.DeleteUserUseCase
 import com.userhub.domain.usecase.GetUsersUseCase
-import io.ktor.client.plugins.ResponseException
-import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -18,7 +18,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.io.IOException
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -74,7 +73,7 @@ class UserFeedViewModel(
         }
     }
 
-    fun onUserCreated(user: UserDto) {
+    fun onUserCreated(user: User) {
         val content = _state.value as? UserFeedUiState.Content ?: return
         // the result can be delivered again if the screen is recreated before it's marked handled
         if (content.users.any { it.id == user.id }) return
@@ -131,17 +130,16 @@ class UserFeedViewModel(
     private fun commit(pending: PendingDelete) {
         // app scope, so the request isn't canceled when the screen closes
         appScope.launch {
-            try {
-                deleteUser(pending.user.id)
-            } catch (e: IOException) {
+            // the repository already counts a 404 (already gone) as success
+            val result = deleteUser(pending.user.id)
+            if (result is DataResult.Failure) {
                 restore(pending)
-                _errors.trySend("Couldn't delete ${pending.user.name}. Check your connection.")
-            } catch (e: ResponseException) {
-                // 404 means it's already gone
-                if (e.response.status != HttpStatusCode.NotFound) {
-                    restore(pending)
-                    _errors.trySend("Couldn't delete ${pending.user.name}.")
+                val message = if (result.error == DataError.Offline) {
+                    "Couldn't delete ${pending.user.name}. Check your connection."
+                } else {
+                    "Couldn't delete ${pending.user.name}."
                 }
+                _errors.trySend(message)
             }
         }
     }

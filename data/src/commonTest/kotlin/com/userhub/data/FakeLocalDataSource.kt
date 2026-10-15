@@ -2,16 +2,16 @@ package com.userhub.data
 
 import com.userhub.data.local.CachedUser
 import com.userhub.data.local.UserLocalDataSource
-import com.userhub.data.remote.UserDto
+import com.userhub.domain.model.User
 
 class FakeLocalDataSource(initial: List<CachedUser> = emptyList()) : UserLocalDataSource {
 
     private var stored = initial.toMutableList()
 
-    var savedUsers: List<UserDto> = emptyList()
+    var savedUsers: List<User> = emptyList()
         private set
 
-    override fun saveUsers(users: List<UserDto>, timestamp: Long) {
+    override fun saveUsers(users: List<User>, timestamp: Long) {
         savedUsers = users
         stored = users.map { CachedUser(it, timestamp) }.toMutableList()
     }
@@ -30,7 +30,7 @@ class FakeLocalDataSource(initial: List<CachedUser> = emptyList()) : UserLocalDa
 
     override fun createdTimes(): Map<Long, Long> = created.toMap()
 
-    override fun addUser(user: UserDto, timestamp: Long) {
+    override fun addUser(user: User, timestamp: Long) {
         stored.removeAll { it.user.id == user.id }
         stored.add(0, CachedUser(user, timestamp))
     }

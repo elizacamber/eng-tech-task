@@ -5,8 +5,8 @@ import com.userhub.data.local.SqlDelightUserLocalDataSource
 import com.userhub.data.local.UserLocalDataSource
 import com.userhub.data.remote.GoRestApi
 import com.userhub.data.remote.createHttpClient
-import com.userhub.data.repository.UserRepository
 import com.userhub.data.repository.UserRepositoryImpl
+import com.userhub.domain.repository.UserRepository
 import com.userhub.domain.usecase.AddUserUseCase
 import com.userhub.domain.usecase.DeleteUserUseCase
 import com.userhub.domain.usecase.GetUsersUseCase

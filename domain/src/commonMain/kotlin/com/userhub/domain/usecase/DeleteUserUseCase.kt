@@ -1,9 +1,9 @@
 package com.userhub.domain.usecase
 
-import com.userhub.data.repository.UserRepository
-import io.ktor.client.statement.HttpResponse
+import com.userhub.domain.model.DataResult
+import com.userhub.domain.repository.UserRepository
 
 class DeleteUserUseCase(private val repository: UserRepository) {
-    suspend operator fun invoke(id: Long): HttpResponse =
+    suspend operator fun invoke(id: Long): DataResult<Unit> =
         repository.deleteUser(id)
 }

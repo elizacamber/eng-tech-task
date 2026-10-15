@@ -1,6 +1,6 @@
 package com.userhub.presentation
 
-import com.userhub.data.remote.UserDto
+import com.userhub.domain.model.User
 import com.userhub.domain.time.formatRelativeTime
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
@@ -15,12 +15,12 @@ import kotlin.time.Instant
 private val dateFormat =
     LocalDate.Format { day(); char(' '); monthName(MonthNames.ENGLISH_ABBREVIATED) }
 
-fun List<UserDto>.toUiModels(createdAtMillis: Map<Long, Long>): List<UserUiModel> =
+fun List<User>.toUiModels(createdAtMillis: Map<Long, Long>): List<UserUiModel> =
     map { user ->
         UserUiModel(user, createdAtMillis[user.id]?.let(Instant::fromEpochMilliseconds))
     }
 
-fun UserDto.toNewUiModel(now: Instant): UserUiModel = UserUiModel(this, createdAt = now)
+fun User.toNewUiModel(now: Instant): UserUiModel = UserUiModel(this, createdAt = now)
 
 internal data class CreatedLabel(val text: String, val nextChange: Instant?)
 

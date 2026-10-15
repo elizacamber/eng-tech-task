@@ -3,20 +3,22 @@ package com.userhub.data
 import com.userhub.data.local.CachedUser
 import com.userhub.data.remote.ApiConfig
 import com.userhub.data.remote.GoRestApi
-import com.userhub.data.remote.UserDto
 import com.userhub.data.remote.createHttpClient
 import com.userhub.data.repository.UserRepositoryImpl
-import com.userhub.data.repository.UsersResult
+import com.userhub.domain.model.DataError
+import com.userhub.domain.model.DataResult
+import com.userhub.domain.model.User
+import com.userhub.domain.repository.UsersResult
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
-import io.ktor.client.plugins.ResponseException
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -54,7 +56,7 @@ class UserRepositoryImplTest {
     }
 
     private val cachedAda = CachedUser(
-        UserDto(7, "Ada", "ada@example.com", "female", "active"), 1_700_000_000_000L
+        User(7, "Ada", "ada@example.com", "female", "active"), 1_700_000_000_000L
     )
 
     private fun fixedClock(millis: Long) = object : Clock {
@@ -89,7 +91,7 @@ class UserRepositoryImplTest {
     fun `falls back to cached users when the network fails`() = runTest {
         val cached = listOf(
             CachedUser(
-                UserDto(7, "Cached User", "cached@example.com", "male", "active"),
+                User(7, "Cached User", "cached@example.com", "male", "active"),
                 1_700_000_000_000L
             )
         )
@@ -187,7 +189,7 @@ class UserRepositoryImplTest {
         val engine = MockEngine { respondError(HttpStatusCode.NotFound) }
         val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), local)
 
-        assertFailsWith<ResponseException> { repository.deleteUser(7) }
+        assertEquals(DataResult.Success(Unit), repository.deleteUser(7))
         assertTrue(local.getUsers().isEmpty())
     }
 
@@ -197,7 +199,70 @@ class UserRepositoryImplTest {
         val engine = MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }
         val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), local)
 
-        assertFailsWith<ResponseException> { repository.deleteUser(7) }
+        assertEquals(DataResult.Failure(DataError.Server(503)), repository.deleteUser(7))
         assertEquals(listOf(7L), local.getUsers().map { it.user.id })
+    }
+
+    private fun createFailingEngine(status: HttpStatusCode, body: String) = MockEngine {
+        respond(
+            content = body,
+            status = status,
+            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+        )
+    }
+
+    @Test
+    fun `duplicate email is reported as a field error`() = runTest {
+        val engine = createFailingEngine(
+            HttpStatusCode.UnprocessableEntity,
+            """[{"field":"email","message":"has already been taken"}]"""
+        )
+        val local = FakeLocalDataSource()
+        val repository = UserRepositoryImpl(GoRestApi(createHttpClient(engine)), local)
+
+        val result = repository.createUser("New", "new@example.com")
+
+        assertEquals(
+            DataResult.Failure(DataError.InvalidFields(mapOf("email" to "has already been taken"))),
+            result
+        )
+        assertTrue(local.getUsers().isEmpty())
+    }
+
+    @Test
+    fun `unreadable 422 body falls back to a server error`() = runTest {
+        val engine =
+            createFailingEngine(HttpStatusCode.UnprocessableEntity, """{"unexpected":true}""")
+        val repository =
+            UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
+
+        assertEquals(
+            DataResult.Failure(DataError.Server(422)),
+            repository.createUser("New", "new@example.com")
+        )
+    }
+
+    @Test
+    fun `401 is reported as unauthorized`() = runTest {
+        val engine = MockEngine { respondError(HttpStatusCode.Unauthorized) }
+        val repository =
+            UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
+
+        assertEquals(
+            DataResult.Failure(DataError.Unauthorized),
+            repository.createUser("New", "new@example.com")
+        )
+    }
+
+    @Test
+    fun `network failure while creating is reported as offline`() = runTest {
+        val engine = MockEngine { throw IOException("no network") }
+        val repository =
+            UserRepositoryImpl(GoRestApi(createHttpClient(engine)), FakeLocalDataSource())
+
+        assertEquals(
+            DataResult.Failure(DataError.Offline),
+            repository.createUser("New", "new@example.com")
+        )
     }
 }

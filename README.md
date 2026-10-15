@@ -24,29 +24,31 @@ One shared codebase drives both Android and iOS — including 100% of the UI.
 
 ## Architecture
 
-MVVM with layered modules, split across three Gradle modules so the boundaries are enforced by the
-build, not by convention:
+Clean Architecture with MVVM, split across three Gradle modules so the boundaries are enforced by
+the build, not by convention. Dependencies point inward, towards `domain`:
 
 ```
 ┌───────────────┐
-│  composeApp   │  Compose Multiplatform UI + ViewModels
-└───────┬───────┘
-        │ depends on
-        ▼
-┌───────────────┐
-│    domain     │  Use cases, time formatting
-└───────┬───────┘
-        │ depends on
-        ▼
-┌───────────────┐
-│     data      │  Ktor client, SQLDelight cache, repository implementation
-└───────────────┘
+│  composeApp   │  Compose Multiplatform UI, ViewModels, Koin wiring
+└───┬───────┬───┘
+    │       │ (Koin wiring only)
+    │       ▼
+    │   ┌───────────────┐
+    │   │     data      │  Ktor client, SQLDelight cache, UserRepositoryImpl
+    │   └───────┬───────┘
+    ▼           ▼
+┌───────────────────────┐
+│        domain         │  User, UserRepository, DataError/DataResult, use cases
+└───────────────────────┘  Pure Kotlin: no Ktor, no SQLDelight, no Android
 ```
 
-ViewModels depend on use cases, and the UI depends only on ViewModels and immutable state objects.
-`composeApp` also depends on `data` directly, for Koin wiring and the `UserDto` model. Dependencies
-currently point **outward**, from `domain` to `data`, not inward as in Clean Architecture —
-see [Known limitations](#known-limitations).
+- **`domain`** owns the contracts: the `User` model, the `UserRepository` interface, and the
+  `DataResult` / `DataError` types every operation returns. It has no project dependencies.
+- **`data`** implements `UserRepository`. HTTP and database types (`UserDto`, `HttpResponse`,
+  SQLDelight rows) stay inside it; DTOs are `internal`, and every HTTP failure is mapped to a
+  `DataError` at the repository boundary.
+- **`composeApp`** ViewModels depend only on use cases and `domain` types. The module depends on
+  `data` only so Koin can bind `UserRepositoryImpl` to `UserRepository`.
 
 - **Networking** — Ktor 3.5 with content negotiation and kotlinx.serialization.
 - **Persistence** — SQLDelight 2.3, typed queries generated at build time, native drivers per platform.
@@ -55,9 +57,9 @@ see [Known limitations](#known-limitations).
 
 ## Error handling
 
-Only expected failures are caught: network errors (`IOException`), HTTP error responses
-(`ResponseException`) and unreadable responses. Cancellation and programming errors are not
-swallowed.
+The repository catches only expected failures (network errors, HTTP error responses and unreadable
+responses) and returns them as a `DataError`, so no Ktor exception reaches the ViewModels.
+Cancellation and programming errors are not swallowed.
 
 - **Loading the feed** — falls back to the cached list; with an empty cache, a "No Internet" screen
   offers a retry.
@@ -69,16 +71,18 @@ swallowed.
 
 ## Testing
 
-Unit tests across all three modules — 56 tests, run on both Android and the iOS simulator:
+Unit tests across all three modules — 59 tests, run on both Android and the iOS simulator:
 
-| Module       | Covers                                                                                                                                       |
-|--------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| `domain`     | relative time formatting (including hour and day boundaries), all three use cases                                                            |
-| `data`       | fetching, caching with the injected clock, offline fallback, empty cache, cancellation, cache updates on add and delete                      |
-| `composeApp` | feed ViewModel load, delete and undo (including the deferred delete), selection; add-user errors and one-time delivery; creation-time labels |
+| Module       | Covers                                                                                                                                                                           |
+|--------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `domain`     | relative time formatting (including hour and day boundaries), all three use cases                                                                                                |
+| `data`       | fetching, caching with the injected clock, offline fallback, empty cache, cancellation, cache updates on add and delete, HTTP error mapping (`401`, `422` field errors, offline) |
+| `composeApp` | feed ViewModel load, delete and undo (including the deferred delete and failed deletes), selection; add-user errors and one-time delivery; creation-time labels                  |
 
 Hand-written fakes are used instead of a mocking framework, so the tests stay readable and
-multiplatform. Run them with `./gradlew allTests`; `./gradlew test` runs the Android tests only.
+multiplatform. The `domain` and `composeApp` fakes return plain `DataResult` values, so those tests
+need no HTTP mocking and run entirely on the coroutine test scheduler. Run them with
+`./gradlew allTests`; `./gradlew test` runs the Android tests only.
 
 ## How I used AI tooling
 
@@ -92,30 +96,6 @@ AI assistance was central to hitting this scope in a day, and I treated it as a 
 The takeaway: the architecture, the module boundaries and the UX decisions are mine; the typing was largely automated.
 
 ## Known limitations
-
-### `domain` depends on `data`
-
-`domain` declares `api(project(":data"))`, and `AddUserUseCase` / `DeleteUserUseCase` return Ktor's
-`HttpResponse`. As a result:
-
-- Ktor types reach the use cases and the ViewModels, so HTTP error mapping (e.g. GoRest's `422`
-  field errors) lives in `AddUserViewModel` instead of the repository.
-- `domain` and `composeApp` tests need `ktor-client-mock` to build fake responses, and the ViewModel
-  tests wait on real time (`delay(100)`) while the mock engine completes.
-- Swapping the backend would touch `domain` and `composeApp`, not only `data`.
-
-Planned fix, in two steps:
-
-1. **Remove Ktor from the repository API.** `createUser` / `deleteUser` return
-   `Result<…, DataError>` with a sealed `DataError` (offline, unauthorized, invalid fields, not
-   found, server). Error mapping moves into the repository, and the fakes return plain values, so
-   tests run on the test scheduler.
-2. **Invert the dependency.** Move `UserRepository`, `UsersResult`, `DataError` and a `User` model
-   into `domain`; `data` depends on `domain` and maps `UserDto` to `User`. `domain` then has no
-   Ktor, SQLDelight or `data` dependency.
-
-This was left out of the current change set to keep the bug fixes reviewable on their own; it
-touches about half the Kotlin files.
 
 ### Hard-coded API token
 

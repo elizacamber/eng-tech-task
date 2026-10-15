@@ -1,10 +1,12 @@
 package com.userhub.presentation
 
-import com.userhub.data.remote.UserDto
+import com.userhub.domain.model.DataError
+import com.userhub.domain.model.User
 import com.userhub.domain.usecase.DeleteUserUseCase
 import com.userhub.domain.usecase.GetUsersUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -22,9 +24,9 @@ import kotlin.test.assertTrue
 class UserFeedViewModelTest {
 
     private val users = listOf(
-        UserDto(1, "Ada Lovelace", "ada@example.com", "female", "active"),
-        UserDto(2, "Alan Turing", "alan@example.com", "male", "active"),
-        UserDto(3, "Grace Hopper", "grace@example.com", "female", "active")
+        User(1, "Ada Lovelace", "ada@example.com", "female", "active"),
+        User(2, "Alan Turing", "alan@example.com", "male", "active"),
+        User(3, "Grace Hopper", "grace@example.com", "female", "active")
     )
 
     @BeforeTest
@@ -171,12 +173,30 @@ class UserFeedViewModelTest {
     @Test
     fun `the same created user is only added once`() = runTest {
         val viewModel = viewModel(FakeUserRepository(users))
-        val created = UserDto(99, "New User", "new@example.com", "female", "active")
+        val created = User(99, "New User", "new@example.com", "female", "active")
 
         viewModel.onUserCreated(created)
         viewModel.onUserCreated(created)
 
         val state = viewModel.state.value as UserFeedUiState.Content
         assertEquals(1, state.users.count { it.id == 99L })
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `failed delete restores the row and reports why`() = runTest {
+        val repository = FakeUserRepository(users, deleteError = DataError.Offline)
+        val viewModel = viewModel(repository)
+        val target = (viewModel.state.value as UserFeedUiState.Content).users.first()
+        val errors = mutableListOf<String>()
+        backgroundScope.launch { viewModel.errors.collect { errors += it } }
+
+        viewModel.onDeleteConfirmed(target)
+        viewModel.onUndoWindowClosed(target)
+        runCurrent()
+
+        val state = viewModel.state.value as UserFeedUiState.Content
+        assertTrue(state.users.any { it.id == target.id })
+        assertEquals(listOf("Couldn't delete ${target.name}. Check your connection."), errors)
     }
 }
