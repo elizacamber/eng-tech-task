@@ -167,4 +167,16 @@ class UserFeedViewModelTest {
 
         assertEquals(selected.id, viewModel.selectedUserId.value)
     }
+
+    @Test
+    fun `the same created user is only added once`() = runTest {
+        val viewModel = viewModel(FakeUserRepository(users))
+        val created = UserDto(99, "New User", "new@example.com", "female", "active")
+
+        viewModel.onUserCreated(created)
+        viewModel.onUserCreated(created)
+
+        val state = viewModel.state.value as UserFeedUiState.Content
+        assertEquals(1, state.users.count { it.id == 99L })
+    }
 }

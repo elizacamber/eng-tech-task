@@ -76,6 +76,8 @@ class UserFeedViewModel(
 
     fun onUserCreated(user: UserDto) {
         val content = _state.value as? UserFeedUiState.Content ?: return
+        // the result can be delivered again if the screen is recreated before it's marked handled
+        if (content.users.any { it.id == user.id }) return
         _state.value = content.copy(users = listOf(user.toNewUiModel(clock.now())) + content.users)
     }
 

@@ -17,7 +17,9 @@ import io.ktor.serialization.kotlinx.json.json
 
 class FakeUserRepository(
     private val users: List<UserDto> = emptyList(),
-    private val createStatus: HttpStatusCode = HttpStatusCode.Created
+    private val createStatus: HttpStatusCode = HttpStatusCode.Created,
+    // null = echo the created user back, like GoRest does on 201
+    private val createBody: String? = null,
 ) : UserRepository {
 
     var getUsersCalls = 0
@@ -40,7 +42,8 @@ class FakeUserRepository(
         createdEmail = email
         return respondWith(
             createStatus,
-            """{"id":99,"name":"$name","email":"$email","gender":"male","status":"active"}"""
+            createBody
+                ?: """{"id":99,"name":"$name","email":"$email","gender":"male","status":"active"}"""
         )
     }
 

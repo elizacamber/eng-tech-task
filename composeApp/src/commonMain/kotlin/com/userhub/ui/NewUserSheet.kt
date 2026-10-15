@@ -15,11 +15,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.userhub.presentation.AddUserError
 import com.userhub.presentation.AddUserState
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -27,13 +28,27 @@ import com.userhub.presentation.AddUserState
 fun NewUserSheet(
     state: AddUserState,
     onDismiss: () -> Unit,
+    onInputChanged: () -> Unit,
     onSubmit: (name: String, email: String) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
+    // saveable so typed values survive rotation
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
 
     val nameValid = name.trim().length >= 2
     val emailValid = email.contains("@") && email.substringAfter("@").contains(".")
+
+    // 422 errors from the server, shown under the field they belong to
+    val fieldErrors = (state.error as? AddUserError.InvalidFields)?.messages.orEmpty()
+    val nameError = when {
+        name.isNotEmpty() && !nameValid -> "Name must be at least 2 characters"
+        else -> fieldErrors["name"]?.let { "Name $it" }
+    }
+    val emailError = when {
+        email.isNotEmpty() && !emailValid -> "Enter a valid email address"
+        else -> fieldErrors["email"]?.let { "Email $it" }
+    }
+    val generalError = state.error?.let(::generalMessage)
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
@@ -41,35 +56,34 @@ fun NewUserSheet(
             Spacer(Modifier.height(16.dp))
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
-                label = { Text("Full name") },
-                isError = name.isNotEmpty() && !nameValid,
-                supportingText = {
-                    if (name.isNotEmpty() && !nameValid) {
-                        Text("Name must be at least 2 characters")
-                    }
+                onValueChange = {
+                    name = it
+                    onInputChanged()
                 },
+                label = { Text("Full name") },
+                isError = nameError != null,
+                supportingText = { nameError?.let { Text(it) } },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
-                label = { Text("Email") },
-                isError = email.isNotEmpty() && !emailValid,
-                supportingText = {
-                    if (email.isNotEmpty() && !emailValid) {
-                        Text("Enter a valid email address")
-                    }
+                onValueChange = {
+                    email = it
+                    // editing clears a server error such as "has already been taken"
+                    onInputChanged()
                 },
+                label = { Text("Email") },
+                isError = emailError != null,
+                supportingText = { emailError?.let { Text(it) } },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            if (state.errorMessage != null) {
+            if (generalError != null) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = state.errorMessage,
+                    text = generalError,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -85,4 +99,13 @@ fun NewUserSheet(
             Spacer(Modifier.height(32.dp))
         }
     }
+}
+
+// Errors that don't belong to a single field. Field errors are shown on the fields.
+private fun generalMessage(error: AddUserError): String? = when (error) {
+    AddUserError.Offline -> "No internet connection. Please check your network and try again."
+    AddUserError.Unauthorized -> "The app isn't authorised to add users. The API token may be invalid."
+    is AddUserError.InvalidFields -> null
+    is AddUserError.Server -> "Couldn't create user (${error.status}). Please try again."
+    AddUserError.UnreadableResponse -> "User was created, but the response couldn't be read. Pull to refresh."
 }

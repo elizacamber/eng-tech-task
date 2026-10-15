@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -46,7 +47,7 @@ fun DirectoryScreen(
     val state by feedViewModel.state.collectAsStateWithLifecycle()
     val addState by addUserViewModel.state.collectAsStateWithLifecycle()
 
-    var showAddSheet by remember { mutableStateOf(false) }
+    var showAddSheet by rememberSaveable { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<UserUiModel?>(null) }
     val selectedUserId by feedViewModel.selectedUserId.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -55,6 +56,17 @@ fun DirectoryScreen(
     // Delete failures from the ViewModel (the row has already been restored).
     LaunchedEffect(Unit) {
         feedViewModel.errors.collect { snackbarHostState.showSnackbar(it) }
+    }
+
+    // A created user arrives through state, so it isn't lost if the screen
+    // was recreated (e.g. rotated) while the request was in flight.
+    LaunchedEffect(addState.createdUser) {
+        val created = addState.createdUser ?: return@LaunchedEffect
+        feedViewModel.onUserCreated(created)
+        showAddSheet = false
+        addUserViewModel.onCreatedHandled()
+        // own scope: clearing createdUser restarts this effect, which would cancel the snackbar
+        scope.launch { snackbarHostState.showSnackbar("User added") }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -119,13 +131,8 @@ fun DirectoryScreen(
                         showAddSheet = false
                         addUserViewModel.clearError()
                     },
-                    onSubmit = { name, email ->
-                        addUserViewModel.submit(name, email) { created ->
-                            feedViewModel.onUserCreated(created)
-                            showAddSheet = false
-                            scope.launch { snackbarHostState.showSnackbar("User added") }
-                        }
-                    }
+                    onInputChanged = addUserViewModel::clearError,
+                    onSubmit = { name, email -> addUserViewModel.submit(name, email) }
                 )
             }
 
