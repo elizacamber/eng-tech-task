@@ -86,4 +86,17 @@ class UserRepositoryImplTest {
     fun `uses the public GoRest base url`() {
         assertTrue(ApiConfig.BASE_URL.startsWith("https://"))
     }
+
+    @Test
+    fun `returns NoInternet when network fails and cache is empty`() = runTest{
+        val engine = MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }
+        val repository = UserRepositoryImpl(
+            GoRestApi(createHttpClient(engine)),
+            FakeLocalDataSource()
+        )
+
+        val result = repository.getUsers()
+
+        assertIs<UsersResult.NoInternet>(result)
+    }
 }
