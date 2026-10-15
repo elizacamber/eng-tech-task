@@ -48,10 +48,11 @@ private fun PlaceholderMessage() {
 
 @Composable
 private fun UserProfile(user: UserUiModel) {
+    val createdLabel = rememberCreatedLabel(user.createdAt)
     val attributes = listOfNotNull(
         "Gender" to user.user.gender,
         "Status" to user.user.status,
-        user.createdLabel?.let { "Added" to it }
+        createdLabel?.let { "Added" to it }
     )
     Column(
         modifier = Modifier

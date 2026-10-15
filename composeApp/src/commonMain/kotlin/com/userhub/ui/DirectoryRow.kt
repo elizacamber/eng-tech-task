@@ -72,7 +72,7 @@ fun DirectoryRow(
             )
         }
 
-        user.createdLabel?.let { label ->
+        rememberCreatedLabel(user.createdAt)?.let { label ->
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,

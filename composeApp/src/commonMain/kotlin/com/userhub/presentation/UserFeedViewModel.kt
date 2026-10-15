@@ -60,7 +60,7 @@ class UserFeedViewModel(
                         }"
                     }
                     _state.value = UserFeedUiState.Content(
-                        result.users.toUiModels(result.createdAtMillis, now),
+                        result.users.toUiModels(result.createdAtMillis),
                         lastSyncLabel
                     )
                 }
