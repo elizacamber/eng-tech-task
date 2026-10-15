@@ -1,20 +1,31 @@
 # UserHub
 
-A production-ready cross-platform user management client built with Kotlin Multiplatform and Compose Multiplatform. One shared codebase drives both Android and iOS — including 100% of the UI.
+A cross-platform user management client built with Kotlin Multiplatform and Compose Multiplatform.
+One shared codebase drives both Android and iOS — including 100% of the UI.
 
 ## Features
 
-- **Smart user feed** — loads the most recent users from the last page of the GoRest directory, with name, email and a relative timestamp ("5 minutes ago") computed entirely in shared code.
+- **User feed** — loads the most recent users from the last page of the GoRest directory, with name
+  and email. GoRest has no creation date, so only users added in the app show when they were added:
+  "5 minutes ago" and "3 hours ago" within the first day (updated live), then the date.
 - **Shimmer loading states** — no spinners anywhere; the list skeleton animates while data loads.
-- **Offline-first** — every fetch is written through to a local SQLDelight database, so the feed keeps working when the network doesn't.
-- **Add user** — a FAB opens a polished bottom sheet with real-time name and email validation. On a successful `201` the new user appears at the top of the feed immediately.
-- **Delete with undo** — long-press a user, confirm, and the row animates out with a snackbar offering Undo. Nothing is finalised until the undo window closes.
-- **Adaptive layout** — a single list in portrait, a master-detail split on landscape and tablet, driven by available width rather than device type.
+- **Offline fallback** — every fetch, add and delete is written to a local SQLDelight database. When
+  the network is unavailable, the feed shows the cached list with a "last updated" note.
+- **Add user** — a FAB opens a polished bottom sheet with real-time name and email validation. On a
+  successful `201` the new user appears at the top of the feed immediately. Server validation
+  errors, such as an email that's already taken, appear on the matching field.
+- **Delete with undo** — long-press a user, confirm, and the row animates out with a snackbar
+  offering Undo. The delete is only sent to the server once the undo window closes; if it fails, the
+  row comes back with an error message.
+- **Adaptive layout** — on narrow screens, tapping a user opens their details full-screen; on wide
+  screens (700dp and up) the list and details sit side by side. Driven by available width rather
+  than device type.
 - **Material 3 + dark mode** — the full palette adapts to the system theme.
 
 ## Architecture
 
-Strict Clean Architecture with MVVM, split across three Gradle modules so the boundaries are enforced by the build, not by convention:
+MVVM with layered modules, split across three Gradle modules so the boundaries are enforced by the
+build, not by convention:
 
 ```
 ┌───────────────┐
@@ -23,8 +34,8 @@ Strict Clean Architecture with MVVM, split across three Gradle modules so the bo
         │ depends on
         ▼
 ┌───────────────┐
-│    domain     │  Use cases, business rules, time logic
-└───────┬───────┘  Pure Kotlin — no Ktor, no SQLDelight, no Android
+│    domain     │  Use cases, time formatting
+└───────┬───────┘
         │ depends on
         ▼
 ┌───────────────┐
@@ -32,7 +43,10 @@ Strict Clean Architecture with MVVM, split across three Gradle modules so the bo
 └───────────────┘
 ```
 
-Dependencies point inward. The domain module knows nothing about how data is fetched or stored — swapping GoRest for another backend, or SQLDelight for Room, touches exactly one module. ViewModels depend only on use cases; the UI depends only on ViewModels and immutable state objects.
+ViewModels depend on use cases, and the UI depends only on ViewModels and immutable state objects.
+`composeApp` also depends on `data` directly, for Koin wiring and the `UserDto` model. Dependencies
+currently point **outward**, from `domain` to `data`, not inward as in Clean Architecture —
+see [Known limitations](#known-limitations).
 
 - **Networking** — Ktor 3.5 with content negotiation and kotlinx.serialization.
 - **Persistence** — SQLDelight 2.3, typed queries generated at build time, native drivers per platform.
@@ -41,19 +55,30 @@ Dependencies point inward. The domain module knows nothing about how data is fet
 
 ## Error handling
 
-Production-ready error handling covers every failure mode. Network calls are wrapped so no exception can reach the UI unhandled; failures degrade gracefully to a dedicated "No Internet" screen with a retry action, and the cached feed is served whenever the live call cannot complete. The user never sees a stack trace, an error code, or an empty screen with no explanation.
+Only expected failures are caught: network errors (`IOException`), HTTP error responses
+(`ResponseException`) and unreadable responses. Cancellation and programming errors are not
+swallowed.
+
+- **Loading the feed** — falls back to the cached list; with an empty cache, a "No Internet" screen
+  offers a retry.
+- **Adding a user** — offline, unauthorised (`401`), field validation (`422`) and other server
+  errors each get their own message. Unexpected server errors show the status code, e.g. "Couldn't
+  create user (500)".
+- **Deleting a user** — on failure the row is restored and a snackbar explains why. A `404` counts
+  as success, since the user is already gone.
 
 ## Testing
 
-Comprehensive unit test coverage across all three modules — 17 tests, green on both platforms:
+Unit tests across all three modules — 56 tests, run on both Android and the iOS simulator:
 
-| Module | Covers |
-| --- | --- |
-| `domain` | relative time formatting, all three use cases |
-| `data` | repository success path, cache write-through, offline fallback |
-| `composeApp` | feed ViewModel load/delete/undo, add-user ViewModel submission |
+| Module       | Covers                                                                                                                                       |
+|--------------|----------------------------------------------------------------------------------------------------------------------------------------------|
+| `domain`     | relative time formatting (including hour and day boundaries), all three use cases                                                            |
+| `data`       | fetching, caching with the injected clock, offline fallback, empty cache, cancellation, cache updates on add and delete                      |
+| `composeApp` | feed ViewModel load, delete and undo (including the deferred delete), selection; add-user errors and one-time delivery; creation-time labels |
 
-Hand-written fakes are used instead of a mocking framework, so the tests stay readable and multiplatform. Run them with `./gradlew test`.
+Hand-written fakes are used instead of a mocking framework, so the tests stay readable and
+multiplatform. Run them with `./gradlew allTests`; `./gradlew test` runs the Android tests only.
 
 ## How I used AI tooling
 
@@ -66,6 +91,49 @@ AI assistance was central to hitting this scope in a day, and I treated it as a 
 
 The takeaway: the architecture, the module boundaries and the UX decisions are mine; the typing was largely automated.
 
+## Known limitations
+
+### `domain` depends on `data`
+
+`domain` declares `api(project(":data"))`, and `AddUserUseCase` / `DeleteUserUseCase` return Ktor's
+`HttpResponse`. As a result:
+
+- Ktor types reach the use cases and the ViewModels, so HTTP error mapping (e.g. GoRest's `422`
+  field errors) lives in `AddUserViewModel` instead of the repository.
+- `domain` and `composeApp` tests need `ktor-client-mock` to build fake responses, and the ViewModel
+  tests wait on real time (`delay(100)`) while the mock engine completes.
+- Swapping the backend would touch `domain` and `composeApp`, not only `data`.
+
+Planned fix, in two steps:
+
+1. **Remove Ktor from the repository API.** `createUser` / `deleteUser` return
+   `Result<…, DataError>` with a sealed `DataError` (offline, unauthorized, invalid fields, not
+   found, server). Error mapping moves into the repository, and the fakes return plain values, so
+   tests run on the test scheduler.
+2. **Invert the dependency.** Move `UserRepository`, `UsersResult`, `DataError` and a `User` model
+   into `domain`; `data` depends on `domain` and maps `UserDto` to `User`. `domain` then has no
+   Ktor, SQLDelight or `data` dependency.
+
+This was left out of the current change set to keep the bug fixes reviewable on their own; it
+touches about half the Kotlin files.
+
+### Hard-coded API token
+
+The GoRest token is in `ApiConfig.kt` and in the git history. It should be revoked and read from
+`local.properties` (e.g. via BuildKonfig) instead.
+
+### Gender is always "male"
+
+GoRest requires a gender when creating a user, and the add-user sheet doesn't ask for one, so every
+new user is sent as `"male"`.
+
+### Other
+
+- Code signing is off in the Xcode project (see Build and run).
+- On iOS, the detail screen closes with the on-screen back arrow only; the edge-swipe gesture isn't
+  supported.
+- Deletes made while offline fail and are restored; they aren't queued for later.
+
 ## Build and run
 
 Requires JDK 17, Android SDK 36, and Xcode 15+ for iOS.
@@ -75,14 +143,14 @@ Requires JDK 17, Android SDK 36, and Xcode 15+ for iOS.
 ./gradlew :composeApp:assembleDebug
 ./gradlew :composeApp:installDebug
 
-# Unit tests (all modules)
-./gradlew test
-
-# iOS framework
-./gradlew :composeApp:linkDebugFrameworkIosSimulatorArm64
+# Unit tests (all modules, Android + iOS simulator)
+./gradlew allTests
 ```
 
-For iOS, open `iosApp/iosApp.xcodeproj` in Xcode and run the `iosApp` scheme on a simulator. The shared framework is built automatically by a run-script phase.
+For iOS, open `iosApp/iosApp.xcodeproj` in Xcode and run the `iosApp` scheme. A run-script phase
+calls `./gradlew :composeApp:embedAndSignAppleFrameworkForXcode`, which builds the shared framework
+for the selected configuration and destination. Code signing is off, so the app runs on the
+simulator; to install on a device, set your own development team locally.
 
 ## Tech stack
 
