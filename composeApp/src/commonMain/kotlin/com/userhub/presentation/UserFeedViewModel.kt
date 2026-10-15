@@ -10,21 +10,34 @@ import com.userhub.domain.usecase.DeleteUserUseCase
 import com.userhub.domain.usecase.GetUsersUseCase
 import io.ktor.client.plugins.ResponseException
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.io.IOException
 
 class UserFeedViewModel(
     private val getUsers: GetUsersUseCase,
-    private val deleteUser: DeleteUserUseCase
+    private val deleteUser: DeleteUserUseCase,
+    private val appScope: CoroutineScope,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UserFeedUiState>(UserFeedUiState.Loading)
     val state: StateFlow<UserFeedUiState> = _state.asStateFlow()
 
-    private var pendingUndo: Pair<Int, UserUiModel>? = null
+    private val _errors = Channel<String>(Channel.BUFFERED)
+    val errors: Flow<String> = _errors.receiveAsFlow()
+
+    // Delete waiting for its Undo window. Only sent to the server when the window closes.
+    // One at a time: starting a new delete sends the previous one right away.
+    private var pendingDelete: PendingDelete? = null
+
+    private data class PendingDelete(val index: Int, val user: UserUiModel)
 
     init {
         load()
@@ -60,34 +73,66 @@ class UserFeedViewModel(
         val content = _state.value as? UserFeedUiState.Content ?: return
         val index = content.users.indexOf(user)
         if (index < 0) return
-        pendingUndo = index to user
+        // Free the slot: the previous user can no longer be undone, so send it now.
+        pendingDelete?.let(::commit)
+        pendingDelete = PendingDelete(index, user)
         _state.value = content.copy(users = content.users - user)
-        // fixme use app scope
-        viewModelScope.launch {
+    }
+
+    // Undo tapped: nothing was sent, so just put the row back.
+    fun onUndo(user: UserUiModel) {
+        val pending = takePending(user) ?: return
+        restore(pending)
+    }
+
+    // Snackbar timed out or was dismissed: safe to delete on the server.
+    fun onUndoWindowClosed(user: UserUiModel) {
+        val pending = takePending(user) ?: return
+        commit(pending)
+    }
+
+    override fun onCleared() {
+        // the screen is gone. Nobody can tap Undo anymore
+        pendingDelete?.let(::commit)
+        pendingDelete = null
+    }
+
+    // a late callback from an older snackbar must not touch a newer delete
+    // Race scenario: deleting user B sends user A immediately, but A's snackbar only reports "dismissed" a frame later.
+    // By then the slot holds B, so we match on user id to make sure A's late callback doesn't send or undo B.
+    private fun takePending(user: UserUiModel): PendingDelete? {
+        val pending = pendingDelete?.takeIf { it.user.id == user.id } ?: return null
+        pendingDelete = null
+        return pending
+    }
+
+    private fun commit(pending: PendingDelete) {
+        // app scope, so the request isn't canceled when the screen closes
+        appScope.launch {
             try {
-                deleteUser(user.id)
+                deleteUser(pending.user.id)
             } catch (e: IOException) {
-                // server didn't delete this. Restore it.
-                restore(index, user)
+                restore(pending)
+                _errors.trySend("Couldn't delete ${pending.user.name}. Check your connection.")
             } catch (e: ResponseException) {
-                // treat 404 as success
-                // for any other server error, restore it
-                if (e.response.status != HttpStatusCode.NotFound) restore(index, user)
+                // 404 means it's already gone
+                if (e.response.status != HttpStatusCode.NotFound) {
+                    restore(pending)
+                    _errors.trySend("Couldn't delete ${pending.user.name}.")
+                }
             }
         }
     }
 
-    fun onUndo() {
-        val (index, user) = pendingUndo ?: return
-        restore(index, user)
-    }
-
-    private fun restore(index: Int, user: UserUiModel) {
-        val content = _state.value as? UserFeedUiState.Content ?: return
-        if (user in content.users) return
-        val users = content.users.toMutableList()
-        users.add(index.coerceAtMost(users.size), user)
-        _state.value = content.copy(users = users)
-        pendingUndo = null
+    // Can run on a background thread (from commit) while the UI also writes state,
+    // so use update {} for an atomic read-modify-write.
+    private fun restore(pending: PendingDelete) {
+        _state.update { current ->
+            val content = current as? UserFeedUiState.Content ?: return@update current
+            if (pending.user in content.users) return@update current
+            val users = content.users.toMutableList()
+            users.add(pending.index.coerceAtMost(users.size), pending.user)
+            content.copy(users = users)
+        }
     }
 }

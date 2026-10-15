@@ -22,6 +22,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,11 @@ fun DirectoryScreen(
     var selectedUser by remember { mutableStateOf<UserUiModel?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    // Delete failures from the ViewModel (the row has already been restored).
+    LaunchedEffect(Unit) {
+        feedViewModel.errors.collect { snackbarHostState.showSnackbar(it) }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -118,15 +124,21 @@ fun DirectoryScreen(
                 TextButton(
                     onClick = {
                         pendingDelete = null
+                        // only one undo at a time: close the previous snackbar
+                        snackbarHostState.currentSnackbarData?.dismiss()
                         feedViewModel.onDeleteConfirmed(user)
                         scope.launch {
-                            val result = snackbarHostState.showSnackbar(
-                                message = "User deleted",
-                                actionLabel = "Undo",
-                                duration = SnackbarDuration.Long
-                            )
-                            if (result == SnackbarResult.ActionPerformed) {
-                                feedViewModel.onUndo()
+                            var undone = false
+                            try {
+                                // finally runs on Undo, timeout, dismiss, or the screen leaving
+                                undone = snackbarHostState.showSnackbar(
+                                    message = "${user.name} deleted",
+                                    actionLabel = "Undo",
+                                    duration = SnackbarDuration.Long
+                                ) == SnackbarResult.ActionPerformed
+                            } finally {
+                                if (undone) feedViewModel.onUndo(user)
+                                else feedViewModel.onUndoWindowClosed(user)
                             }
                         }
                     }

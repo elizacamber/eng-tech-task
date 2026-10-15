@@ -12,6 +12,9 @@ import com.userhub.domain.usecase.DeleteUserUseCase
 import com.userhub.domain.usecase.GetUsersUseCase
 import com.userhub.presentation.AddUserViewModel
 import com.userhub.presentation.UserFeedViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
@@ -24,6 +27,7 @@ val appModule = module {
     factory { GetUsersUseCase(get()) }
     factory { AddUserUseCase(get()) }
     factory { DeleteUserUseCase(get()) }
-    viewModel { UserFeedViewModel(get(), get()) }
+    single { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    viewModel { UserFeedViewModel(get(), get(), get()) }
     viewModel { AddUserViewModel(get()) }
 }
